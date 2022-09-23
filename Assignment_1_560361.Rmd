@@ -1,0 +1,910 @@
+---
+title: "Learning from Big Data: Module 1 - Final Assignment Template"
+author: 'Student name: Vid Tominec              '
+date: "9/6/2022"
+output:
+  word_document: default
+  pdf_document:
+    fig_caption: yes
+header-includes: "\\usepackage{float} \\usepackage{booktabs} % To thicken table lines
+  \\usepackage{unicode-math}"
+---
+
+
+!!!NOTE: Due to knitting taking a very long time on my computer, all of the text and the code formatting in the end was done in word. The code was first knitted into a word document, instead of a pdf, since the knitting took longer then 10 minutes each time. All of the final text was written in word and can be seen in the pdf.
+
+
+# Introduction
+This file provides a template for assignment 1 of the Learning from Big Data course.
+This file was prepared to save you time so that you can focus on the theory and technical parts of the methods seen in class.
+This was prepared with a specific application in mind: movie reviews.
+For the supervised learning tasks, we will focus on three topics: acting, storyline and visual/sound effects. 
+
+You have by now received the dataset of reviews, the three dictionaries with the training set of words for each topic, a list of stopwords and a validation dataset containting sentences classified by a panel of human judges.
+This R markdown file has lot of code created to handle things such as loading these data files and the general settings of the environment we use to run the analysis.  The supervised learning code in this file was covered in Session #2.
+
+This R markdown file will upload  all the above files and make them available for you to use them when solving the NLP problems listed here.
+The questions you are to complete are marked as "QUESTION".
+The parts you are expected to add your code are marked as "# YOUR CODE HERE". 
+There, you are expected to write your own code based on the in-class discussions and the decisions you will make as you study the theory, materials, and models. 
+
+This tutorial has the following structure:
+
+\begin{enumerate}
+  \item \textbf{General Guidelines} 
+  \item \textbf{Research Question} 
+  \item \textbf{Load libraries} 
+  \item \textbf{Load the reviews} 
+  \item \textbf{Data aggregation and formatting } 
+  \item \textbf{Supervised Learning - The Naive Bayes classifier (NBC) }
+  \item \textbf{Supervised Learning - Inspect the NBC performance}
+  \item \textbf{Unsupervised Learning - Predict Box office using LDA}
+  \item \textbf{Unsupervised Learning - Predict Box office using Word2Vec}
+  \item \textbf{Analysis - answering the research question}
+  \item \textbf{OPTIONAL - run and interpret the VADER lexicon for sentiment}
+  \item \textbf{Appendix}
+\end{enumerate}
+
+\textcolor{red}{Before going further:} check that you have R, R markdown and tinytex correctly installed. Tutorial 0 provides instructions for doing so.
+
+# 1. General Guidelines
+Page length. The template has 8 pages. You are allowed to add 7 to 10 pages, not including the appendix.
+There is a limit of pages, but you have the possibility of using appendices, which are not limited in number of pages.  Use your pages wisely. For example, having a table with 2 rows and 3 columns that uses 50% (or even 25%) of a page is not really wise.  
+
+# 2. Research Question
+QUESTION I. Present here the main research question you are going to answer with your text analysis.
+You are free to choose the problem and change it until the last minute before handing in your report. However, your question should not be so simple that it does not require text analysis. For example, if your question can be answered by reading two reviews, you do not need text analysis; all you need is 10 seconds to read two reviews. Your question should not be so difficult that you cannot answer in your report. Your question needs to be answered in these pages.
+
+
+# 3. Loading libraries
+
+Before starting the problem set, make sure you have all the required libraries properly installed. 
+Simply run this chunk of code below.
+
+```{r, echo = T, results = 'hide', message=FALSE}
+
+# Required packages. P_load ensures these will be installed and loaded.
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tm, openNLP, nnet, dplyr, tidyr, ggplot2, reshape2,latex2exp)
+
+#Required packages
+install.packages("word2vec")
+install.packages("magrittr") 
+install.packages("tm")
+install.packages("nnet")
+
+library(word2vec)
+library(magrittr)
+library(tm)
+library("nnet")
+```
+
+# 4. Load the reviews
+We will explore the concepts from this problem set with a dataset of online movie reviews.
+The reviews were written from 2009 to 2013. 
+The data was collected in 2014. 
+Each observation is a movie review. 
+Each observation in the data includes the textual review, a numerical rating from 1 to 10 (i.e., the number of stars), the movie title, the reviewer and the date the review was written. 
+The observation  includes data from the movie being reviewed: the movie release date, the box office in the first week (as that is the strongest predictor of movie success), the studio that produced the movie, the number of teathers that the movie was released and the MPAA rating. 
+The review also includes two pieces of information on the quality of the review itself: the number of readers who found the review useful, and the number of readers who rated the review as useful or not useful. 
+There are reviews that non one rated as useful or not useful. 
+The date in which a review was rated is not available.
+
+The data set contains 19 columns.
+ 
+\begin{itemize}
+   \item movie name: title of the movie being reviewed
+   \item review code: a unique serial identifier for all reviews in this dataset 
+   \item reviewer: the reviewer who wrote the review
+   \item num eval: the number of stars  
+   \item review date: the date the review was writte
+   \item prob sentiment: a placeholder variable to store the probability the review is positive. This is to be computed by you.
+   \item words in lexicon sentiment and review: the number of words that are found both in the review and in the sentiment lexicon you will be using
+   \item ratio helpful: number of people that rated the review as useful divided by the total number of people that rated the review
+   \item raters: number of people that rated the review as either useful or not useful 
+   \item prob storyline: a placeholder variable to store the probability the review is about the movie storyline.
+   \item prob acting: a placeholder variable to store the probability the review is about acting.
+   \item prob sound visual: a placeholder variable to store the probability the review is about the movie special effects (sound or visual)
+   \item full text:  raw review text
+   \item processed text: the cleaned review text, free of punctuation marks.
+   \item release date:day the movie was released.
+   \item first week box office: number of movie teather tickets sold in the first week from movie release. Data from boxofficemojo.com 
+   \item MPAA: MPAA rating of the movie (e.g., PG-rated)
+   \item studio: movie studio that produced the movie.
+   \item num theaters: number of movie theaters that this movie was shown on the release date. Data from boxofficemojo.com 
+   
+\end{itemize}
+
+
+```{r, load data}
+
+install.packages("magrittr") 
+install.packages("tm")
+install.packages("striprtf")
+install.packages("stringr")
+install.packages("word2vec")
+install.packages('caret')
+install.packages("fastDummies")
+install.packages("nnet")
+install.packages("stringr")
+
+library("stringr")
+library(tidyverse)
+library(striprtf)
+library(magrittr)
+library(tm)
+library(dplyr)
+library(tidytext)
+library(readtext)
+library(magrittr)
+require(tidyverse)
+library(stringr)
+library(word2vec)
+library("caret")
+library("fastDummies")
+library("nnet")
+
+Reviews_Raw <- 
+  read.csv("/Users/vidtominec/Desktop/LFBD/Module 1/Reviews_short_w_boxoffice.csv",
+           header = TRUE) 
+
+Reviews_Raw <- Reviews_Raw %>% 
+  select(movie_name,review_code, reviewer,	review_date, num_eval,
+      prob_sentiment,words_in_lexicon_sentiment_and_review, 
+         ratio_helpful,	
+            raters, prob_storyline,	prob_acting,	prob_sound_visual,
+              full_text,	processed_text,
+                release_date,	first_week_box_office,MPAA,	studio,	num_theaters)
+```
+
+
+
+# 5. Data aggregation and formatting.
+QUESTION II. Decide on how to aggregate or structure your data.
+The data you received is at the review level (i.e., each row is a review). 
+However, the variables in the data are very rich and allow you to use your creativity when designing your research question. 
+For example, there are timestamps, which allow you to aggregate the data at the daily level or even hourly level. 
+There is information on reviewers, which allow you to inspect patterns of rating by reviewers.
+There is information on studios, and more. 
+Please explicitly indicate how you structured your dataset, and what is your motivation to do so. 
+Even if you are using the data at the review level, indicate how and why that is needed for your research question.
+
+
+# 6. Supervised learning  -  the Naive Bayes classifier
+
+# 6.0 Load support functions and global parameters
+These two functions, Compute_posterior_sentiment and Compute_posterior_content, are called one time per review. These functions use the Bayes rule we saw in our session #2 to compute the posterior probabilities that the review is about each topic (in the 2nd function) and  the posterior probability that the sentiment in the review is positive and/or negative (in the 1st function).
+````{r, support functions}
+
+#  FUNCTIONS
+Compute_posterior_sentiment = function(prior, corpus_in, dict_words,
+                                       p_w_given_c,TOT_DIMENSIONS){
+  output <-  capture.output 
+       (word_matrix <-inspect(
+         DocumentTermMatrix(corpus_in, control=list(stemming=FALSE, 
+                              language = "english", 
+                                dictionary=as.character(dict_words)))))  
+  
+  # Check if there are any relevant words in the review. 
+  #       If there are, treat them. If not, use prior
+  if (sum(word_matrix) == 0) {posterior<-prior ; words_ <- c("")} else
+  { 
+    # Positions in word matrix that have words from this review
+    word_matrix_indices <- which(word_matrix>0)
+    textual_words_vec   <- colnames(word_matrix)[word_matrix_indices]
+    
+    # Loop around words found in review 
+    WR <- length(word_matrix_indices) ;word_matrix_indices_index=1
+    for (word_matrix_indices_index in 1: WR)
+    {   
+      word <- 
+        colnames(word_matrix)[word_matrix_indices[word_matrix_indices_index]]
+      p_w_given_c_index <- which(as.character(p_w_given_c$words) == word) 
+      
+      # Loop around occurrences  | word
+      occurrences_current_word=1
+      for (occurrences_current_word in 1: 
+           word_matrix[1,word_matrix_indices[word_matrix_indices_index]] )
+      {  
+        # initialize variables
+        posterior <- c(rep(0, TOT_DIMENSIONS)) 
+        vec_likelihood<-as.numeric(c(p_w_given_c$pos_likelihood[p_w_given_c_index],
+                                p_w_given_c$neg_likelihood[p_w_given_c_index])) 
+        
+        # positive - this is the first element in the vector
+        numerat <-prior[1] *as.numeric(p_w_given_c$pos_likelihood[p_w_given_c_index]) 
+        denomin         <-  prior %*% vec_likelihood
+        posterior[1]  	<- numerat /  denomin 
+        
+        # negative - this is the second element in the vector
+        numerat <- 
+          prior[2] *as.numeric(p_w_given_c$neg_likelihood[p_w_given_c_index])
+        denomin <-  prior %*% vec_likelihood
+        posterior[2] <- numerat /  denomin 
+        
+        
+        if (sum(posterior)>1.01) { ERROR <- TRUE }
+        prior <- posterior 		  	    
+      } # close loop around occurrences
+    } # close loop around words in this review 
+    words_ <-  colnames(word_matrix)[word_matrix_indices] 
+  } # close if review has no sent words
+  
+  return(list(posterior_=posterior, words_=words_) )
+}        
+
+Compute_posterior_content = function(prior,  word_matrix, p_w_given_c, BIGRAM, 
+                                     TOT_DIMENSIONS){
+
+  # Check if there are any relevant words in the review. 
+  # If there are, treat them. If not, use prior
+  if (sum(word_matrix) == 0) {posterior<-prior  } else
+  { 
+    # Positions in word matrix that have words from this review
+    word_matrix_indices <- which(word_matrix>0)
+    textual_words_vec   <- colnames(word_matrix)[word_matrix_indices]
+    
+    # Loop around words found in review 
+    WR <- length(word_matrix_indices) ;word_matrix_indices_index=1
+    for (word_matrix_indices_index in 1: WR)
+    {   
+      word<-colnames(word_matrix)[word_matrix_indices[word_matrix_indices_index]]
+      p_w_given_c_index <- which(as.character(p_w_given_c$words) == word) 
+      
+      # Loop around occurrences  | word
+      occurrences_current_word=1
+      for (occurrences_current_word in 
+           1:  word_matrix[1,word_matrix_indices[word_matrix_indices_index]])
+      {  
+        # initialize variables
+        posterior     <- c(rep(0, TOT_DIMENSIONS)) 
+        vec_likelihood <-as.numeric(c(p_w_given_c$storyline[p_w_given_c_index],
+                                      p_w_given_c$acting[p_w_given_c_index],
+                                      p_w_given_c$visual[p_w_given_c_index]) ) 
+        
+        # storyline - this is the first element in the vector
+        numerat <-prior[1]*as.numeric(p_w_given_c$storyline[p_w_given_c_index]) 
+        denomin         <-  prior %*% vec_likelihood
+        posterior[1]  	<-  numerat /  denomin 
+        
+        # acting - this is the second element in the vector
+        numerat <-  prior[2] *as.numeric(p_w_given_c$acting[p_w_given_c_index])
+        denomin         <-  prior %*% vec_likelihood
+        posterior[2]  	<-  numerat /  denomin 
+        
+        # visual - this is the third element in the vector
+        numerat<-prior[3] * as.numeric(p_w_given_c$visual[p_w_given_c_index])
+        denomin         <-  prior %*% vec_likelihood
+        posterior[3]  	<-  numerat /  denomin 
+        
+        if (sum(posterior)>1.01) { ERROR <- TRUE }
+        prior <- posterior 		  	    
+      } # close loop around occurrences
+    } # close loop around words in this review 
+    
+  } # close if review has no sent words
+  
+  return (posterior_= posterior  )
+}   
+
+# GLOBAL PARAMETERS
+PRIOR_SENT  = 1/2
+PRIOR_TOPIC = 1/3
+TOT_REVIEWS = length(Reviews_Raw[,1]) 
+
+````
+
+
+# 6.1 Likelihoods
+
+QUESTION III. Create the content likelihoods based on the 3 lists of words below. Be explicit on the decisions you took in the process, and why you made those decisions (e.g., which smoothing approach you used).
+````{r, creating content likelihoods}
+
+library("dplyr")
+library(tidytext)
+library(readtext)
+library(magrittr)
+require(tidyverse)
+
+data("stop_words")
+
+#Loading the likelihood files
+dictionary_storyline<-
+  read.delim("/Users/vidtominec/Desktop/LFBD/Module 1/storyline_33k.txt",
+                                 header = FALSE)
+dictionary_acting<-
+  read.delim("/Users/vidtominec/Desktop/LFBD/Module 1/acting_33k.txt",
+                              header = FALSE)
+dictionary_visual<-
+  read.delim("/Users/vidtominec/Desktop/LFBD/Module 1/visual_33k.txt",
+                              header = FALSE)
+
+#Transforming to lowercase - matching the syntax of the "stop_words" database
+dictionary_storyline <- dictionary_storyline %>% mutate(V1 = tolower(V1))
+dictionary_acting <- dictionary_acting %>% mutate(V1 = tolower(V1))
+dictionary_visual <- dictionary_visual %>% mutate(V1 = tolower(V1))
+
+
+#Removing stop words from the data-frames
+dictionary_storyline <- dictionary_storyline %>%
+  anti_join(stop_words, by=c("V1" = "word"))
+
+dictionary_acting <- dictionary_acting %>%
+  anti_join(stop_words, by=c("V1" = "word"))
+
+dictionary_visual <- dictionary_visual %>%
+  anti_join(stop_words, by=c("V1" = "word"))
+
+
+#Data-frames of word frequencies, +1 added to each frequency for smoothing
+frequency_stroyline <- dictionary_storyline %>% count(V1, sort = TRUE) 
+frequency_acting <- dictionary_acting %>% count(V1, sort = TRUE) 
+frequency_visual <- dictionary_visual %>% count(V1, sort = TRUE) 
+
+
+frequency_stroyline <- frequency_stroyline %>%
+       mutate(across(where(is.numeric), ~ .x + 1))
+
+frequency_acting <- frequency_acting %>%
+       mutate(across(where(is.numeric), ~ .x + 1))
+
+frequency_visual <- frequency_visual %>%
+       mutate(across(where(is.numeric), ~ .x + 1))
+
+
+#Sum of all frequencies (smoothed)
+sum_frequency_stroyline <- sum(frequency_stroyline$n)
+sum_frequency_acting <- sum(frequency_acting$n)
+sum_frequency_visual <- sum(frequency_visual$n)
+
+#Mutating lists to change the column names 
+likelihood_storyline <-frequency_stroyline %>% mutate(word = V1, frequency = n)
+likelihood_storyline <-likelihood_storyline[c("word", "frequency")]
+
+likelihood_acting <- frequency_acting %>% mutate(word = V1, frequency = n)
+likelihood_acting <- likelihood_acting[c("word", "frequency")]
+
+likelihood_visual <- frequency_visual %>% mutate(word = V1, frequency = n)
+likelihood_visual <- likelihood_visual[c("word", "frequency")]
+
+
+#Dividing each frequency by the sum of all frequency (already smoothed)
+likelihood_s <- likelihood_storyline[, 2] / sum_frequency_stroyline
+likelihood_storyline$likelihood_s <- likelihood_s
+
+likelihood_a <- likelihood_acting[, 2] / sum_frequency_acting
+likelihood_acting$likelihood_a<- likelihood_a
+
+likelihood_v <- likelihood_visual[, 2] / sum_frequency_visual
+likelihood_visual$likelihood_v<- likelihood_v
+
+
+#Selecting and printing final likelihoods
+likelihood_storyline <- likelihood_storyline[c("word", "likelihood_s")]
+likelihood_acting <- likelihood_acting[c("word", "likelihood_a")]
+likelihood_visual <- likelihood_visual[c("word", "likelihood_v")]
+
+#Compiling likelihoods for
+likelihoods <- list(likelihood_storyline,likelihood_acting,
+                    likelihood_visual) %>% 
+  reduce(inner_join, by='word')
+
+names(likelihoods)[1] <- "words"
+names(likelihoods)[2] <- "storyline"
+names(likelihoods)[3] <- "acting"
+names(likelihoods)[4] <- "visual"
+
+#Using likelihoods (PROFESSOR'S CODE)
+
+likelihoods <- likelihoods[,1:4]
+lexicon_content <- as.character(likelihoods[ ,1])
+
+````
+
+
+
+QUESTION IV. Locate a list of sentiment words that fits your research question. For example, you may  
+want to look just at positive and negative sentiment (hence two dimensions), or you may want to 
+look at other sentiment dimensions, such as specific emotions (excitement, fear, etc.).  
+TIP: Google will go a long way finding these, but do check if there is a paper you can cite that uses your list.
+
+````{r, creating sentiment likelihoods} 
+# ADD YOUR CODE HERE, replacing these fake likelihoods
+
+install.packages('striprtf')
+    library('striprtf')
+
+
+#Loading file
+cumulative_dictionary<-
+  read.delim("/Users/vidtominec/Desktop/LFBD/Module 1/SCL-NMA.txt",
+                                  skip = 0, header=FALSE)
+
+names(cumulative_dictionary)[1] <- "words"
+names(cumulative_dictionary)[2] <- "value"
+
+cumulative_dictionary$pos_likelihood <- ""
+
+cumulative_dictionary$pos_likelihood <- 
+  transform(cumulative_dictionary, pos_likelihood = as.numeric(pos_likelihood))
+
+
+#Normalizing and separating into negative and positive likelihoods
+cumulative_dictionary = cumulative_dictionary %>% 
+  mutate(pos_likelihood = (value - min(value)) / (max(value) - min(value)))
+
+cumulative_dictionary$neg_likelihood <- ""
+transform(cumulative_dictionary, neg_likelihood = as.numeric(neg_likelihood))
+
+cumulative_dictionary <- cumulative_dictionary %>% 
+  mutate(neg_likelihood = if_else(pos_likelihood > 0, 1- pos_likelihood, 0))
+
+cumulative_dictionary = cumulative_dictionary[c("words",
+                                                "pos_likelihood",
+                                                "neg_likelihood")]
+
+cumulative_dictionary[cumulative_dictionary == 0] <- 0.00000000000001
+cumulative_dictionary[cumulative_dictionary == 1] <- 0.99999999999999
+
+
+
+#Likelihoods are divided by a constant of 10 for faster processing
+cumulative_dictionary = cumulative_dictionary %>% 
+  mutate(pos_likelihood = pos_likelihood / 10)
+
+cumulative_dictionary = cumulative_dictionary %>% 
+  mutate(neg_likelihood = neg_likelihood / 10)
+
+
+#Loading the dictionary
+likelihoods_sentim <- cumulative_dictionary
+
+lexicon_sentiment <-  as.character(likelihoods_sentim$words)   
+````
+
+# 6.2 Run NBC for sentiment
+```{r, calculating sentiment}
+
+for (review_index in 1:TOT_REVIEWS) {
+  prior_sent     <- c(PRIOR_SENT,1-PRIOR_SENT)   
+  # Reset the prior as each review is looked at separately  
+  text_review    <- as.character(Reviews_Raw$processed_text[review_index])
+
+# 2.2.A Pre-process the review to remove punctuation marks and numbers. 
+# Note that we are not removing stopwords here
+  corpus_review  <- tm_map(
+    tm_map(VCorpus(VectorSource(text_review)), 
+           removePunctuation), removeNumbers)    
+  
+  # 2.2.B Compute posterior probability the review is positive
+  TOT_DIMENSIONS = 2
+  output <-capture.output(
+    sent.results <- Compute_posterior_sentiment(prior = prior_sent, 
+                                              corpus_in  = corpus_review,  
+                                              dict_words = lexicon_sentiment,
+                                              p_w_given_c=likelihoods_sentim, 
+                                              TOT_DIMENSIONS) )
+  words_sent  <- sent.results$words_  
+  posterior_sent <- sent.results$posterior_ 
+  Reviews_Raw$prob_sentiment[review_index] <- posterior_sent[1]
+  Reviews_Raw$
+    words_in_lexicon_sentiment_and_review[review_index]<-
+    paste(words_sent,collapse =" ")
+} 
+
+mean(Reviews_Raw$prob_sentiment)
+```
+
+
+
+# 6.3 Run NBC for content
+```{r, calculating content}
+
+#Changed processed review to "full_text"
+
+for (review_index in 1: TOT_REVIEWS) {
+  if ( Reviews_Raw$full_text[review_index]!=""){
+    text_review   <- as.character(Reviews_Raw$full_text[review_index])
+    
+    # 3.3.A Pre-process the review to remove numbers and punctuation marks. 
+    
+    corpus_review <- VCorpus(VectorSource(text_review))  # put in corpus format
+    output <-capture.output(content_word_matrix <-  
+                inspect(DocumentTermMatrix(corpus_review, 
+                                           control = list(stemming=FALSE,
+                                                          language = "english",
+                                                          removePunctuation=TRUE,
+                                                          removeNumbers=TRUE,
+                                                          dictionary=as.character(lexicon_content)))))
+    
+    # 3.3.B  Compute posterior probability the review is about each topic  
+    TOT_DIMENSIONS = 3
+    posterior <- Compute_posterior_content(prior=matrix(PRIOR_TOPIC, ncol=TOT_DIMENSIONS), 
+                                           content_word_matrix, 
+                                           p_w_given_c=likelihoods,, 
+                                           TOT_DIMENSIONS) 
+    Reviews_Raw$prob_storyline[review_index]    <- posterior[1]
+    Reviews_Raw$prob_acting[review_index]       <- posterior[2]
+    Reviews_Raw$prob_sound_visual[review_index] <- posterior[3]
+  }   
+}  
+
+Processed_reviews <- Reviews_Raw
+
+# Saves the updated file, including the sentiment and content/topic posteriors.
+write.csv(Reviews_Raw,file="C:\\Users\\vidtominec\\Desktop\\Reviews_posteriors_divided100.csv"
+          , row.names = FALSE )
+```
+
+
+
+# 7. Supervised Learning - Inspect the NBC performance
+
+# 7.1 Load judges scores
+```{r, Load ground truth}
+
+ground_truth_judges <-
+  read.csv("/Users/vidtominec/Desktop/LFBD/Module 1/judges.csv", header = TRUE)
+
+#Empty list
+check_review <- data.frame(matrix(ncol = 1, nrow = 1995))
+colnames(check_review) <- c("position")
+
+
+#Looping around the judges data
+for (i in 1:1977){
+  
+  #If a review contain the sentence, the index is stored in a new list
+  test <- sum(str_detect(Reviews_Raw$
+                           full_text, fixed(as.character(ground_truth_judges$
+                                                           Sentence[i])))) > 0
+  
+  if (test == TRUE)
+    check_review[[i,"position"]] <- test
+}
+
+#Removing the judge sentences review which don't appear in the reviews
+#Removing the sentences marked as "none"
+ground_truth_judges["X"] <-
+  check_review["position"]
+
+ground_truth_judges <-
+  filter(ground_truth_judges, X == 'TRUE')
+
+ground_truth_judges <-
+  filter(ground_truth_judges, Judges_classification != 'none')
+
+
+#Creating a column for Reviews Raw indicating which topic was predicted 
+names(Reviews_Raw)[names(Reviews_Raw) == "num_theaters"] <- "predicted_topic"
+
+Reviews_Raw <- 
+  Reviews_Raw %>%
+  mutate(predicted_topic = 
+           if_else((prob_storyline > prob_acting) &
+                     (prob_storyline > prob_sound_visual), "storyline",
+                   if_else((prob_acting > prob_storyline) &
+                             (prob_acting > prob_sound_visual), "acting", "visual")))
+
+
+predicted_value <- data.frame(matrix(ncol = 1, nrow = 240))
+colnames(predicted_value) <- c("position")
+
+
+#Omitted due to error
+ground_truth_judges <- ground_truth_judges[-c(64),]
+
+
+#Matching reviews with the full-text
+for (i in 1:240){
+  
+  index <- grep(ground_truth_judges$Sentence[i], Reviews_Raw$full_text,
+                ignore.case = TRUE)
+  
+  if (length(index) == 1)
+    predicted_value[[i,"position"]] <- grep(ground_truth_judges$Sentence[i],
+                                            Reviews_Raw$full_text,
+                                            ignore.case = TRUE)
+}
+
+#Replacing NA with 0
+predicted_value[is.na(predicted_value)] <- 0
+
+#Pasting predicted value position
+ground_truth_judges["position"] <- predicted_value[1:239,1]
+
+#Drop observations with position = 0
+ground_truth_judges <- filter(ground_truth_judges, position != 0)
+
+#Add the predicted column from Reviews_Raw
+for (i in 1:202){
+  ground_truth_judges[i, "X.4"] <- Reviews_Raw$
+      predicted_topic[ground_truth_judges[i, "position"]]
+}
+
+```
+
+
+# 7.2 Compute confusion matrix, precision and recall
+
+QUESTION V. Compare the performance of your NBC implementation (for content) against the 
+judges ground truth by building the confusion matrix and computing the precision and accuracy scores. 
+Do not forget to interpret your findings.
+
+Despite running the NBC on the
+
+```{r, Computing confusion matrix and scores}
+
+install.packages('caret')
+library("caret")
+
+#Confusion Matrix package
+expected_value <- factor(ground_truth_judges$Judges_classification)
+predicted_value <- factor(ground_truth_judges$X.4)
+
+confusion_matrix <- 
+  confusionMatrix(data=predicted_value, reference = expected_value)
+
+```
+
+
+# 8. Unsupervised Learning: Predict box office using LDA  
+QUESTION VI. Using LDA, predict movie box office. 
+
+Tip: You can pass a  list of reviews to the LDA package, in order to get the posterior probability the reviews are about each topic. If you pass them all in a single document, you will not get review-specific vectors.
+```{r, Computing LDA}
+
+if (!require("pacman")) install.packages("pacman")
+pacman::p_load(tm, openNLP, nnet, dplyr, tidyr, ggplot2, reshape2,
+               latex2exp, topicmodels,word2vec,tokenizers)
+
+library(nnet)
+
+# Load the review data.
+Reviews_Raw_LDA <- 
+  read.csv("/Users/vidtominec/Desktop/LFBD/Module 1/Reviews_short_w_boxoffice.csv",
+           fileEncoding="ISO-8859-1") 
+
+Reviews_Raw_LDA <- 
+  Reviews_Raw_LDA %>% 
+  select(ï..movie_name,review_code,	reviewer,	review_date, num_eval,
+         prob_sentiment,words_in_lexicon_sentiment_and_review, ratio_helpful,	
+            raters, prob_storyline,	prob_acting,	prob_sound_visual,
+               full_text,	processed_text,
+                 release_date, first_week_box_office,MPAA, 
+                  studio,	num_theaters)
+
+Reviews_Raw <- Reviews_Raw 
+
+TOT_REVIEWS_LDA = length(Reviews_Raw_LDA[,1]) 
+
+lexicon_content  <- as.character(likelihoods[ ,1])
+
+#LDA model
+
+# Put reviews in corpus format
+corpus_review <- VCorpus(VectorSource(Reviews_Raw_LDA$processed_text)) 
+
+# Creates the document term matrix that will be passed to the LDA function
+dtm=DocumentTermMatrix(corpus_review, 
+                       control = list(stemming=FALSE,
+                                      language = "english",
+                                      removePunctuation=TRUE,
+                                      removeNumbers=TRUE,
+                                      dictionary=as.character(lexicon_content)))
+# LDA parameters
+SEED=20080809 
+BURNIN = 1000 
+ITER = 1000
+k =10
+
+#Create an LDA model using GIBBS sampling
+model_lda = LDA(dtm, k, method = "Gibbs",
+                control = list(seed = SEED, burnin = BURNIN, iter = ITER),
+                mc.cores = 4)
+
+save(model_lda ,
+     file = paste("C:\\Users\\vidtominec\\Desktop\\.output\\LDA_model",
+                  k,".RData" ,sep="")) 
+
+#Posterior probabilities per document by topic
+posteriors_lda=posterior(model_lda)$topics
+str(posteriors_lda)
+posteriors_lda[review=999,]
+
+#Looking at the most likely terms for each of the topics (k) in the posteriors
+terms_per_k <- terms(model_lda, 5)
+
+#Classifying for each of the topic using the first 5 most likely words
+names(posteriors_lda)[1] <- "poor acting"
+names(posteriors_lda)[2] <- "pleasant experience"
+names(posteriors_lda)[3] <- "film"
+names(posteriors_lda)[4] <- "unpleasant experience"
+names(posteriors_lda)[5] <- "good acting"
+names(posteriors_lda)[6] <- "cinematography elements"
+names(posteriors_lda)[7] <- "actors"
+names(posteriors_lda)[8] <- "storyline"
+names(posteriors_lda)[9] <- "time"
+names(posteriors_lda)[10] <- "directing"
+
+#Selecting the most likely topic of a review
+topic_per_review <- data.frame(topics(model_lda))
+names(topic_per_review)[1] <- "topic"
+
+#Adding the predicted topic per review to the reviews data set
+Reviews_Raw_LDA <- Reviews_Raw_LDA %>% 
+               select(ï..movie_name, review_code,
+                      first_week_box_office)
+
+Reviews_Raw_LDA[4] <- topic_per_review 
+Reviews_Raw_LDA[5] <- "topic_1"
+
+#Creating dummy variables for regression
+install.packages("fastDummies")
+library("fastDummies")
+
+Reviews_Raw_LDA <- dummy_cols(Reviews_Raw_LDA, select_columns = 'topic')
+
+#Removing commas from box office values
+Box_office <- 
+  as.numeric(gsub(",", "", Reviews_Raw_LDA$first_week_box_office, fixed = TRUE))
+
+Box_office<- data.frame(Box_office)
+
+#Regression
+summary(lm(Box_office$Box_office ~ Reviews_Raw_LDA$
+             topic_2 + Reviews_Raw_LDA$topic_3 + Reviews_Raw_LDA$
+             topic_4 + Reviews_Raw_LDA$topic_5 + Reviews_Raw_LDA$
+             topic_6 + Reviews_Raw_LDA$topic_7 + Reviews_Raw_LDA$
+             topic_8 + Reviews_Raw_LDA$topic_9 + Reviews_Raw_LDA$topic_10))
+
+
+```
+
+
+# 9. Unsupervised Learning: Predict box office using Word embeddings given by Word2Vec
+QUESTION VII. Using Word2Vec, predict  movie box office. 
+
+
+Tip 1. you can reduce the dimensionality of the output of word2vec with PDA/Factor analysis. 
+ This will save you computing time. 
+ 
+Tip 2. Word2Vec will give you word vectors. You can then compute the average of these word vectors for all words in
+a review. This will give you vector describing the content of a review, 
+ which you can use as your constructed variable(s).
+
+```{r, Word Embeddings}
+
+install.packages("word2vec")
+library(word2vec)
+
+#Loading reviews for word2vec
+Reviews_Raw_w2v <- 
+  read.csv("/Users/vidtominec/Desktop/LFBD/Module 1/Reviews_short_w_boxoffice.csv",
+           fileEncoding="ISO-8859-1")
+
+#Training with 30% of the data (first 3000 reviews)
+x <-  Reviews_Raw[7000:10000,]$full_text
+
+x <- tolower(x)
+
+# number of topics in Word2Vec
+TOT_TOPICS_WORD2VEC <- 10
+
+# Train
+model<- word2vec(x = x, type = "cbow", dim = TOT_TOPICS_WORD2VEC, iter = 20)
+embedding <- as.matrix(model)
+
+#Running with the other 70% of the reviews (last 7000 reviews)
+
+test <- Reviews_Raw[3000:10000,]$full_text
+
+posteriors_w2v = matrix(0, nc=TOT_TOPICS_WORD2VEC, nr=7000)
+for (k in 1:7000 )
+{
+   # 2.1 get a review  and tokenize it - identify the words, separately
+   tokenized_review <- 
+     unlist(strsplit(Reviews_Raw$full_text[[k]],"[^a-zA-Z0-9]+"))
+   # 2.2 get the word vectors per review using predict()
+   embedding_review <- predict(model, tokenized_review, type = "embedding")
+   #2.3 compute mean across all words in the review 
+   posteriors_w2v[k,] = apply(embedding_review, 2, mean, na.rm=TRUE)
+}
+
+
+#Posterior probabilities per document by topic
+str(posteriors_w2v)
+posteriors_w2v[review=1,]
+
+matrix <- data.frame(posteriors_w2v)
+
+#Highest posterior probability of a topic is selected for each review
+matrix$max <- max.col(matrix[1:10])
+
+  
+Reviews_Raw_w2v <- Reviews_Raw_w2v %>% 
+               select(ï..movie_name, review_code,
+                      first_week_box_office)
+
+Reviews_Raw_w2v <- Reviews_Raw_w2v[1:7000,]
+
+Reviews_Raw_w2v[4] <- matrix$max
+
+#Dummy variable construction
+Reviews_Raw_w2v <- dummy_cols(Reviews_Raw_w2v, select_columns = 'V4')
+
+names(Reviews_Raw_w2v)[3] <- "box_office"
+names(Reviews_Raw_w2v)[5] <- "1"
+names(Reviews_Raw_w2v)[6] <- "2"
+names(Reviews_Raw_w2v)[7] <- "4"
+names(Reviews_Raw_w2v)[8] <- "5"
+names(Reviews_Raw_w2v)[9] <- "6"
+names(Reviews_Raw_w2v)[10] <- "7"
+names(Reviews_Raw_w2v)[11] <- "9"
+
+
+#Regression
+Reviews_Raw_w2v[,3] <- 
+  Reviews_Raw_w2v$box_office <- 
+    as.numeric(gsub(",", "", Reviews_Raw_w2v$box_office, fixed = TRUE))
+
+Reviews_Raw_w2v[,5] <- as.numeric(Reviews_Raw_w2v[,5])
+
+summary(lm(Reviews_Raw_w2v$box_office ~ Reviews_Raw_w2v$`1` + 
+             Reviews_Raw_w2v$`2` + Reviews_Raw_w2v$`4` + Reviews_Raw_w2v$`5` +
+             Reviews_Raw_w2v$`6` + Reviews_Raw_w2v$`7` + Reviews_Raw_w2v$`9`))
+```
+
+# 10. Analysis - Use the constructed variables to answer your research question
+QUESTION VIII. Now that you have constructed your NLP variables for sentiment and content using supervised and unsupervised methods, use them to answer your original research question.
+
+```{r, Analysis}
+#Regress numerical rating against the predicted category
+summary(lm(Reviews_Raw$num_eval ~ Reviews_Raw$prob_sentiment))
+
+#Multinational regression 
+topics_v_rating <- multinom(num_eval ~ predicted_topic + predicted_topic,
+                            data = Reviews_Raw, model = TRUE)
+
+outcome_topics_v_rating <- summary(topics_v_rating)
+
+#Z scores for each coefficient
+z <- summary(topics_v_rating)$
+  coefficients/summary(topics_v_rating)$standard.errors
+
+#Two tailed p-value s
+p <- (1 - pnorm(abs(z), 0, 1)) * 2
+
+exp(coef(topics_v_rating))
+
+p
+```
+
+Using a naive Bayes classifier above, for each movie review in the dataset, has yielded a classification of either "acting", "visual" or "storyline".
+
+To answer the question "Is the storyline of a movie the most significant determinant of the numerical rating of a movie review?", the predicted topic of each review given in the data has to be regressed against the numerical rating of a review.
+
+Using linear regression here, as was done above for both the LDA and Word2vec models when predicting box office, cannot be done. Linear regression has been used above due the nature of the relationship between the predicted topics and the outputs of the unsupervised learning models. Both models produced a topic category with probabilities, meaning that once the most likely topic was selected, one was left with a categorical variable.
+
+Seeing as box office, the dependent variable, is a continuous variable and the predicted topics, the independent variables, were transformed in to dummy variables, linear regression was sufficient. 
+
+Numerical rating, being another categorical variable, cannot be regressed against other categorical variables using linear regression. Instead, a multinomial logistic regression model is used to see the effect of a review being written about a specific topic on the numerical rating. 
+
+Looking at the summary of the output of the model (see "outcome_topics_v_rating"), the coefficients can be interpreted as follows. Since coefficients of a logistic model follow a logistic probability function, the coefficients have to be interpreted in terms of logit probabilities. For example, for a numerical score of 5, having a review be of a "storyline" topic, as compared to an "acting" topic, increases the logit coefficient for that numerical rating by approximately 0.317.
+
+Another, arguably more useful, interpretation of the coefficients is in terms of odds. And odd for outcome "r" is defined as p(r)/(1-p(r)). Looking again at the numerical score of 8 for a "storyline" review, with a coefficient of 0.32886542, odds can be calculated by exponentiating the coefficient. Also known as "odds ratio", calculated as "e^0.317 = 1.372" (see "odds_ratio"), can be interpreted as follows. When a person writes a review based around "storyline", as compared to "acting", the odds of that review having a numerical rating of 5 increase by approximaetly 1.372. The "visual" topic against "acting" for a numerical rating of 8, for example, increases the odds by 1.318, slightly less than "storyline.
+
+Calculating the two-tailed p-values for all of the coefficients, at the 5% significance levels, yields many of them insignificant. The only non-significant intercepts of the base category are for the numerical rating 7, 8 and 9, suggesting that these rating predictions should be disregarded. The insignificant coefficients for "storyline" are for 2, 3 and "10", and for "visual" are 2, 3. 
+
+Looking at the significant coefficients, it can be seen that reviews with the topic "visual" tend to have the highest odds coming with a rating of 10, 1.230 higher than both "acting" and "storyline". A "storyline" review has 1.496 higher odds of coming with a rating of 6, compared to "acting" and 1.496 - 1.363 = 0.133 higher odds when compared to "visual". 
+
+Examining the odds for each topic, it can be concluded that the reviews written about "storyline" are not more likely to be higher rated. In fact, the statistically significant coefficients and the odds ratios of the multinomial logit regression models suggest that "visual" reviews tend to have the highest numerical scores. 
+
+
+
+
+
+# APPENDIX
+
+ 
+ 
